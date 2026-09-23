@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Multi-Crop Yield Comparison — AgriSense{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+  
+  <!-- Header -->
+  <div class="text-center mb-5">
+    <span class="badge-pill badge-trained mb-2">
+      <i class="fa-solid fa-code-compare"></i> Comparative Decision Support
+    </span>
+    <h2 class="mb-2">Multi-Crop Yield Comparison</h2>
+    <p class="text-muted mx-auto" style="max-width: 700px;">
+      Simulate and benchmark expected yields across multiple crop varieties under the exact same agro-climatic conditions and input parameters.
+    </p>
+  </div>
+
+  <div class="row g-4">
+    
+    <!-- Calibration Form -->
+    <div class="col-lg-4">
+      <div class="glass-card">
+        <h5 class="fw-bold mb-3"><i class="fa-solid fa-sliders text-success me-2"></i>Parameters</h5>
+        <form action="{{ url_for('compare') }}" method="POST">
+          
+          <!-- Area -->
+          <div class="agri-input-group">
+            <label class="agri-label">Country / Area</label>
+            <select name="area" class="form-select-agri" required>
+              {% for a in areas %}
+                <option value="{{ a }}" {% if area == a %}selected{% endif %}>{{ a }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Year -->
+          <div class="agri-input-group">
+            <label class="agri-label">Target Year</label>
+            <input type="number" name="year" class="form-control-agri" min="1970" max="2040" value="{{ year }}" required>
+          </div>
+
+          <!-- Rainfall -->
+          <div class="agri-input-group">
+            <div class="agri-label">
+              <span>Annual Rainfall</span>
+              <span class="unit-badge">mm/yr</span>
+            </div>
+            <input type="number" name="rainfall" class="form-control-agri" min="0" max="6000" step="0.1" value="{{ rainfall }}" required>
+          </div>
+
+          <!-- Temperature -->
+          <div class="agri-input-group">
+            <div class="agri-label">
+              <span>Average Temperature</span>
+              <span class="unit-badge">°C</span>
+            </div>
+            <input type="number" name="temperature" class="form-control-agri" min="-10" max="55" step="0.1" value="{{ temperature }}" required>
+          </div>
+
+          <!-- Pesticides -->
+          <div class="agri-input-group">
+            <div class="agri-label">
+              <span>Pesticide Volume</span>
+              <span class="unit-badge">tonnes</span>
+            </div>
+            <input type="number" name="pesticides" class="form-control-agri" min="0" max="400000" step="1" value="{{ pesticides }}" required>
+          </div>
+
+          <!-- Crop Checkboxes -->
+          <div class="agri-input-group">
+            <label class="agri-label mb-2">Select Crops to Compare</label>
+            <div class="bg-light p-3 rounded-3 border" style="max-height: 220px; overflow-y: auto;">
+              {% for c in all_crops %}
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" name="selected_crops" value="{{ c }}" id="crop_{{ loop.index }}"
+                         {% if c in selected_crops %}checked{% endif %}>
+                  <label class="form-check-label small fw-semibold" for="crop_{{ loop.index }}">
+                    {{ c }}
+                  </label>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <button type="submit" class="btn-agri btn-agri-primary w-100 py-3 mt-2">
+            <i class="fa-solid fa-code-compare me-2"></i> Compare Selected Crops
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Comparison Results & Chart -->
+    <div class="col-lg-8">
+      {% if results %}
+        
+        <!-- Interactive Comparison Bar Chart -->
+        <div class="chart-card mb-4">
+          <div class="chart-header">
+            <h5 class="chart-title"><i class="fa-solid fa-chart-simple text-success"></i> Yield Comparison (kg/ha)</h5>
+            <span class="badge bg-light text-muted border">{{ area }} &bull; {{ year }}</span>
+          </div>
+          <div class="chart-canvas-wrapper" style="height: 280px;">
+            <canvas id="comparisonBarChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Comparative Yield Table -->
+        <div class="glass-card p-0 overflow-hidden mb-4">
+          <div class="p-3 bg-light border-bottom d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 fw-bold"><i class="fa-solid fa-table-list text-success me-2"></i>Comparison Table</h6>
+            <span class="text-muted small">Sorted by predicted yield</span>
+          </div>
+          <div class="table-responsive">
+            <table class="agri-table mb-0">
+              <thead>
+                <tr>
+                  <th>Crop Variety</th>
+                  <th class="text-end">Raw (hg/ha)</th>
+                  <th class="text-end">Estimated (kg/ha)</th>
+                  <th class="text-end">Tonnes / ha</th>
+                  <th class="text-end">Historical Avg</th>
+                  <th class="text-end">Variance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in results %}
+                  <tr>
+                    <td class="fw-bold text-dark">
+                      <i class="fa-solid fa-wheat-awn text-success me-2"></i>{{ r.crop }}
+                    </td>
+                    <td class="text-end text-muted">{{ r.yield_hg_ha | format }}</td>
+                    <td class="text-end fw-bold text-success">{{ r.yield_kg_ha | format }}</td>
+                    <td class="text-end">{{ r.yield_tonnes_ha }}</td>
+                    <td class="text-end text-muted">{{ r.historical_avg_kg_ha | format }}</td>
+                    <td class="text-end">
+                      {% if r.diff_vs_historical > 0 %}
+                        <span class="badge bg-success bg-opacity-15 text-success">+{{ r.diff_vs_historical }}</span>
+                      {% elif r.diff_vs_historical < 0 %}
+                        <span class="badge bg-danger bg-opacity-15 text-danger">{{ r.diff_vs_historical }}</span>
+                      {% else %}
+                        <span class="badge bg-secondary bg-opacity-15 text-secondary">0.0</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Hidden JSON for Chart rendering -->
+        <script id="comparisonDataJson" type="application/json">
+          {{ results | tojson }}
+        </script>
+
+        <!-- Scientific Caution Note -->
+        <div class="p-3 bg-light border rounded-3 small text-muted">
+          <i class="fa-solid fa-circle-info text-info me-1"></i>
+          <strong>Agronomic Note:</strong> Predictions reflect statistical model extrapolations based on input conditions. Higher mathematical yield does not guarantee commercial success without considering soil pH, seed variety, market demand, and local pest vectors.
+        </div>
+
+      {% else %}
+        <div class="glass-card text-center py-5">
+          <div class="kpi-icon mx-auto mb-3" style="width: 60px; height: 60px; font-size: 1.8rem;">
+            <i class="fa-solid fa-chart-column"></i>
+          </div>
+          <h4 class="fw-bold">Ready to Compare Crops</h4>
+          <p class="text-muted mx-auto" style="max-width: 480px;">
+            Select your country, target year, environmental metrics, and choose 2 or more crops on the left to calculate and compare estimated yields.
+          </p>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+</div>
+{% endblock %}

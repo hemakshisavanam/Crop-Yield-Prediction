@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Crop Explorer — AgriSense{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+
+  <!-- Header -->
+  <div class="text-center mb-5">
+    <span class="badge-pill badge-trained mb-2">
+      <i class="fa-solid fa-seedling"></i> Verified FAO Catalog
+    </span>
+    <h2 class="mb-2">Crop Explorer</h2>
+    <p class="text-muted mx-auto" style="max-width: 680px;">
+      Explore historical agricultural performance, average yields, and geographic distribution across all 10 food crops tracked in the dataset.
+    </p>
+  </div>
+
+  <!-- Search Filter Box -->
+  <div class="row justify-content-center mb-5">
+    <div class="col-md-6">
+      <div class="crop-search-wrapper">
+        <i class="fa-solid fa-magnifying-glass search-icon-pos"></i>
+        <input type="text" id="cropFilterInput" class="form-control-agri crop-search-input" 
+               placeholder="Filter crops by name..." onkeyup="filterCropCards()">
+      </div>
+    </div>
+  </div>
+
+  <!-- Crops Grid -->
+  <div class="row g-4" id="cropCardsGrid">
+    {% for c in crops_info %}
+      {% set s = c.statistics %}
+      <div class="col-md-6 col-lg-4 crop-card-item" data-crop-name="{{ c.crop | lower }}">
+        <div class="glass-card h-100 d-flex flex-column">
+          
+          <div class="d-flex align-items-center justify-content-between mb-3">
+            <h4 class="mb-0 fs-5 fw-bold text-success">
+              <i class="fa-solid fa-wheat-awn me-2"></i>{{ c.crop }}
+            </h4>
+            <span class="badge bg-light text-dark border">{{ s.records }} Records</span>
+          </div>
+
+          <div class="mb-3">
+            <span class="text-muted small">Historical Average Yield:</span>
+            <div class="fs-4 fw-bold text-dark">{{ s.mean_yield_kg_ha | format }} <span class="fs-6 fw-normal text-muted">kg/ha</span></div>
+            <small class="text-muted">{{ s.mean_yield_hg_ha | format }} hg/ha &bull; {{ s.mean_yield_tonnes_ha }} tonnes/ha</small>
+          </div>
+
+          <div class="bg-light p-3 rounded-3 mb-3 small flex-grow-1">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="text-muted">Min Yield:</span>
+              <span class="fw-bold">{{ (s.min_yield_hg_ha * 0.1) | round(1) }} kg/ha</span>
+            </div>
+            <div class="d-flex justify-content-between mb-1">
+              <span class="text-muted">Max Yield:</span>
+              <span class="fw-bold">{{ (s.max_yield_hg_ha * 0.1) | round(1) }} kg/ha</span>
+            </div>
+            <div class="d-flex justify-content-between mb-1">
+              <span class="text-muted">Countries Producing:</span>
+              <span class="fw-bold">{{ s.countries_count }} regions</span>
+            </div>
+            <div class="d-flex justify-content-between">
+              <span class="text-muted">Historical Rain Avg:</span>
+              <span class="fw-bold">{{ s.avg_rainfall_mm }} mm/yr</span>
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="d-flex gap-2 mt-auto">
+            <a href="{{ url_for('predict') }}?crop={{ c.crop }}" class="btn btn-sm btn-agri-primary flex-fill">
+              <i class="fa-solid fa-calculator me-1"></i> Predict
+            </a>
+            <a href="{{ url_for('crop_detail', crop_name=c.crop) }}" class="btn btn-sm btn-outline-secondary flex-fill">
+              <i class="fa-solid fa-chart-line me-1"></i> Analytics
+            </a>
+          </div>
+
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+</div>
+
+<script>
+function filterCropCards() {
+  const query = document.getElementById('cropFilterInput').value.toLowerCase().trim();
+  const cards = document.querySelectorAll('.crop-card-item');
+  cards.forEach(card => {
+    const name = card.getAttribute('data-crop-name');
+    if (name.includes(query)) {
+      card.style.display = 'block';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+}
+</script>
+{% endblock %}

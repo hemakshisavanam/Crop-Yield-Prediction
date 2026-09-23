@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}{{ details.crop }} — Historical Performance &amp; Analytics — AgriSense{% endblock %}
+
+{% block content %}
+{% set s = details.statistics %}
+<div class="container py-5">
+  
+  <!-- Breadcrumb -->
+  <div class="mb-3">
+    <a href="{{ url_for('crops') }}" class="text-muted small text-decoration-none">
+      <i class="fa-solid fa-arrow-left me-1"></i> Back to All Crops
+    </a>
+  </div>
+
+  <!-- Header Banner -->
+  <div class="glass-card mb-4">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+      <div>
+        <span class="badge bg-success bg-opacity-10 text-success fw-bold px-3 py-1 rounded-pill mb-2">Crop Profile</span>
+        <h2 class="mb-1 text-dark">{{ details.crop }}</h2>
+        <p class="text-muted mb-0">
+          Historical agricultural analysis compiled from {{ s.records }} verified FAO observation records across {{ s.countries_count }} countries.
+        </p>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="{{ url_for('predict') }}?crop={{ details.crop }}" class="btn-agri btn-agri-primary">
+          <i class="fa-solid fa-calculator me-1"></i> Predict This Crop
+        </a>
+        <a href="{{ url_for('compare') }}" class="btn-agri btn-agri-outline">
+          <i class="fa-solid fa-code-compare me-1"></i> Compare
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Key Statistics KPIs -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-scale-balanced"></i></div>
+        <div class="kpi-value">{{ s.mean_yield_kg_ha | format }}</div>
+        <div class="kpi-label">Average Yield (kg/ha)</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-arrow-down text-secondary"></i></div>
+        <div class="kpi-value">{{ (s.min_yield_hg_ha * 0.1) | round(1) }}</div>
+        <div class="kpi-label">Minimum Observed (kg/ha)</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-arrow-up text-success"></i></div>
+        <div class="kpi-value">{{ (s.max_yield_hg_ha * 0.1) | round(1) }}</div>
+        <div class="kpi-label">Maximum Recorded (kg/ha)</div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-cloud-sun-rain text-primary"></i></div>
+        <div class="kpi-value">{{ s.avg_rainfall_mm }}</div>
+        <div class="kpi-label">Avg Rainfall (mm/year)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    
+    <!-- Historical Yearly Yield Trend Chart -->
+    <div class="col-lg-7">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h5 class="chart-title"><i class="fa-solid fa-chart-line text-success"></i> Historical Yield Trend (1990–2013)</h5>
+          <span class="badge bg-light text-muted border">kg/ha Mean</span>
+        </div>
+        <div class="chart-canvas-wrapper" style="height: 300px;">
+          <canvas id="cropTrendChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top Producing Countries Table -->
+    <div class="col-lg-5">
+      <div class="glass-card h-100 p-3">
+        <h5 class="fw-bold mb-3 fs-6"><i class="fa-solid fa-earth-americas text-primary me-2"></i>Top Producing Regions</h5>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0" style="font-size: 0.88rem;">
+            <thead class="table-light">
+              <tr>
+                <th>Region</th>
+                <th>Records</th>
+                <th class="text-end">Avg Yield</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in details.top_areas %}
+                <tr>
+                  <td class="fw-semibold">{{ a.area }}</td>
+                  <td>{{ a.records }}</td>
+                  <td class="text-end fw-bold text-success">{{ a.avg_yield_kg_ha | format }} kg/ha</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Available Countries Pills -->
+  <div class="glass-card">
+    <h5 class="fw-bold mb-3 fs-6"><i class="fa-solid fa-map-location-dot text-success me-2"></i>Countries Cultivating {{ details.crop }} in Dataset</h5>
+    <div class="d-flex flex-wrap gap-2">
+      {% for area in details.available_areas %}
+        <a href="{{ url_for('predict') }}?crop={{ details.crop }}&area={{ area }}" class="badge bg-light text-dark border text-decoration-none py-2 px-3">
+          {{ area }}
+        </a>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+
+<!-- JSON Trend Data & Chart Initialization -->
+<script id="trendDataJson" type="application/json">
+  {{ details.yearly_trend | tojson }}
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const dataEl = document.getElementById('trendDataJson');
+  if (!dataEl) return;
+  const trend = JSON.parse(dataEl.textContent);
+  if (!trend || trend.length === 0) return;
+
+  const canvas = document.getElementById('cropTrendChart');
+  if (!canvas) return;
+
+  new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: trend.map(t => t.year),
+      datasets: [{
+        label: 'Average Yield (kg/ha)',
+        data: trend.map(t => t.yield_kg_ha),
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: 4,
+        pointBackgroundColor: '#064e3b'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          title: { display: true, text: 'kg/ha' }
+        }
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

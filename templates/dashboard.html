@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics Dashboard — AgriSense{% endblock %}
+
+{% block content %}
+<div class="container py-5" id="dashboardChartsContainer">
+
+  <!-- Dashboard Header -->
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+    <div>
+      <span class="badge-pill badge-trained mb-1">
+        <i class="fa-solid fa-chart-line"></i> Real-Data Agronomic Analytics
+      </span>
+      <h2 class="mb-1">Agricultural &amp; Model Intelligence Dashboard</h2>
+      <p class="text-muted mb-0">
+        Empirical dataset statistics, machine-learning performance metrics, and multi-dimensional climate-yield distributions.
+      </p>
+    </div>
+    <div>
+      <a href="{{ url_for('predict') }}" class="btn-agri btn-agri-primary">
+        <i class="fa-solid fa-plus me-1"></i> New Prediction
+      </a>
+    </div>
+  </div>
+
+  <!-- Row 1: Dataset & Model KPIs -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-database text-success"></i></div>
+        <div class="kpi-value">{{ metadata.clean_records | format }}</div>
+        <div class="kpi-label">Clean Training Records</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-bullseye text-warning"></i></div>
+        <div class="kpi-value">{{ (metrics.r2_score * 100) | round(2) }}%</div>
+        <div class="kpi-label">Model Accuracy (R² Score)</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-gauge-high text-primary"></i></div>
+        <div class="kpi-value">{{ metrics.mae_kg_ha }} <span class="fs-6 fw-normal">kg/ha</span></div>
+        <div class="kpi-label">Mean Absolute Error (MAE)</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="kpi-card">
+        <div class="kpi-icon"><i class="fa-solid fa-earth-americas text-info"></i></div>
+        <div class="kpi-value">{{ metadata.areas_count }} / {{ metadata.crops_count }}</div>
+        <div class="kpi-label">Regions / Crop Varieties</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: Secondary Metrics Banner -->
+  <div class="glass-card mb-4 p-3">
+    <div class="row text-center divide-cols">
+      <div class="col-md-3 col-6 py-2">
+        <span class="text-muted small text-uppercase fw-bold d-block">Training Split</span>
+        <span class="fw-bold fs-5 text-dark">{{ metadata.training_records | format }} train / {{ metadata.test_records | format }} test</span>
+      </div>
+      <div class="col-md-3 col-6 py-2">
+        <span class="text-muted small text-uppercase fw-bold d-block">Historical Timeframe</span>
+        <span class="fw-bold fs-5 text-dark">{{ ranges.year.min }} &ndash; {{ ranges.year.max }}</span>
+      </div>
+      <div class="col-md-3 col-6 py-2">
+        <span class="text-muted small text-uppercase fw-bold d-block">RMSE Error</span>
+        <span class="fw-bold fs-5 text-dark">{{ metrics.rmse_kg_ha }} kg/ha</span>
+      </div>
+      <div class="col-md-3 col-6 py-2">
+        <span class="text-muted small text-uppercase fw-bold d-block">Platform Predictions</span>
+        <span class="fw-bold fs-5 text-success">{{ platform_predictions_count }} generated</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3: 8 Dynamic Charts Grid -->
+  <div class="row g-4">
+    
+    <!-- Chart 1: Average Yield by Crop -->
+    <div class="col-lg-6">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h5 class="chart-title"><i class="fa-solid fa-wheat-awn text-success"></i> 1. Average Yield by Crop Variety</h5>
+          <span class="badge bg-light text-muted border">kg/ha Mean</span>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="chart1_crop_yield"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart 2: Historical Yield Trend over Time -->
+    <div class="col-lg-6">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h5 class="chart-title"><i class="fa-solid fa-chart-line text-success"></i> 2. Historical Global Yield Trend (1990–2013)</h5>
+          <span class="badge bg-light text-muted border">Yearly Mean</span>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="chart2_yearly_trend"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart 3: Feature Importance -->
+    <div class="col-lg-6">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h5 class="chart-title"><i class="fa-solid fa-pie-chart text-success"></i> 3. Random Forest Feature Importance</h5>
+          <span class="badge bg-light text-muted border">Weight %</span>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="chart3_feature_importance"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart 4: Top 10 Countries by Mean Crop Yield -->
+    <div class="col-lg-6">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h5 class="chart-title"><i class="fa-solid fa-trophy text-warning"></i> 4. Top 10 Agricultural Regions by Yield</h5>
+          <span class="badge bg-light text-muted border">kg/ha Mean</span>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="chart4_top_countries"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart 5: Rainfall vs Yield -->
+    <div class="col-lg-6">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h5 class="chart-title"><i class="fa-solid fa-cloud-rain text-primary"></i> 5. Annual Rainfall Range vs. Harvest Yield</h5>
+          <span class="badge bg-light text-muted border">Precipitation Bins</span>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="chart5_rainfall_vs_yield"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart 6: Temperature vs Yield -->
+    <div class="col-lg-6">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h5 class="chart-title"><i class="fa-solid fa-temperature-high text-danger"></i> 6. Temperature Range vs. Harvest Yield</h5>
+          <span class="badge bg-light text-muted border">Thermal Bins (°C)</span>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="chart6_temp_vs_yield"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart 7: Pesticide Usage vs Yield -->
+    <div class="col-lg-6">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h5 class="chart-title"><i class="fa-solid fa-flask text-secondary"></i> 7. Pesticide Volume vs. Harvest Yield</h5>
+          <span class="badge bg-light text-muted border">Pesticide Bins (Tonnes)</span>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="chart7_pest_vs_yield"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart 8: Crop Yield Spread (Min, Mean, Max) -->
+    <div class="col-lg-6">
+      <div class="chart-card">
+        <div class="chart-header">
+          <h5 class="chart-title"><i class="fa-solid fa-chart-column text-success"></i> 8. Crop Yield Range Spread (Min, Mean, Max)</h5>
+          <span class="badge bg-light text-muted border">kg/ha Range</span>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="chart8_yield_spread"></canvas>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- User's Recent Predictions (if logged in) -->
+  {% if current_user and recent_predictions %}
+    <div class="glass-card mt-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold mb-0"><i class="fa-solid fa-clock-rotate-left text-success me-2"></i>Your Recent Predictions</h5>
+        <a href="{{ url_for('history') }}" class="small fw-bold text-success">View All ({{ total_user_predictions }}) &rarr;</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" style="font-size: 0.9rem;">
+          <thead class="table-light">
+            <tr>
+              <th>Crop</th>
+              <th>Area</th>
+              <th>Year</th>
+              <th>Yield (kg/ha)</th>
+              <th>Type</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in recent_predictions %}
+              <tr>
+                <td class="fw-bold">{{ r.crop }}</td>
+                <td>{{ r.area }}</td>
+                <td>{{ r.year }}</td>
+                <td class="fw-bold text-success">{{ r.yield_kg_ha | format if r.yield_kg_ha else (r.prediction * 0.1) | round(1) }}</td>
+                <td><span class="badge bg-light text-dark border">{{ r.prediction_type }}</span></td>
+                <td class="text-muted small">{{ r.created_at[:10] if r.created_at else '' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

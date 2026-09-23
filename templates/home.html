@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block title %}AgriSense — AI-Based Crop Yield Prediction and Smart Farming Assistant{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="hero-section">
+  <div class="container">
+    <div class="hero-badge">
+      <i class="fa-solid fa-sparkles text-warning"></i>
+      <span>AI-Powered Agricultural Intelligence Platform</span>
+    </div>
+    
+    <h1 class="hero-title">
+      Smart Crop Yield Prediction &amp;<br>
+      Data-Driven Agronomic Guidance
+    </h1>
+    
+    <p class="hero-subtitle">
+      AgriSense utilizes historical Food and Agriculture Organization (FAO) data and machine learning 
+      to estimate crop yields under user-defined environmental conditions, evaluate climate factors, 
+      and deliver actionable farming recommendations.
+    </p>
+    
+    <div class="hero-cta-group">
+      <a href="{{ url_for('predict') }}" class="btn-agri btn-agri-primary fs-5 px-4 py-3">
+        <i class="fa-solid fa-wheat-awn"></i> Predict Crop Yield
+      </a>
+      <a href="{{ url_for('crops') }}" class="btn-agri btn-agri-outline fs-5 px-4 py-3">
+        <i class="fa-solid fa-magnifying-glass"></i> Explore Crops
+      </a>
+      <a href="{{ url_for('dashboard') }}" class="btn-agri btn-agri-accent fs-5 px-4 py-3">
+        <i class="fa-solid fa-chart-column"></i> View Dashboard
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- KPI Metrics Banner -->
+<section class="py-4">
+  <div class="container">
+    <div class="row g-3">
+      <div class="col-6 col-md-3">
+        <div class="kpi-card">
+          <div class="kpi-icon"><i class="fa-solid fa-database"></i></div>
+          <div class="kpi-value">{{ metadata.clean_records | default('25,932') | format }}</div>
+          <div class="kpi-label">Verified Historical Records</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="kpi-card">
+          <div class="kpi-icon"><i class="fa-solid fa-bullseye"></i></div>
+          <div class="kpi-value">{{ (metrics.r2_score * 100) | round(1) if metrics.r2_score else '98.3' }}%</div>
+          <div class="kpi-label">Model Accuracy (R² Score)</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="kpi-card">
+          <div class="kpi-icon"><i class="fa-solid fa-seedling"></i></div>
+          <div class="kpi-value">{{ metadata.crops_count | default('10') }}</div>
+          <div class="kpi-label">Major Food Crops Covered</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="kpi-card">
+          <div class="kpi-icon"><i class="fa-solid fa-earth-americas"></i></div>
+          <div class="kpi-value">{{ metadata.areas_count | default('101') }}</div>
+          <div class="kpi-label">Global Agricultural Regions</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Application Core Features -->
+<section class="py-5">
+  <div class="container">
+    <div class="text-center mb-5">
+      <span class="badge bg-success bg-opacity-10 text-success fw-bold px-3 py-2 rounded-pill uppercase">Feature Highlights</span>
+      <h2 class="mt-2" style="font-size: 2.3rem;">Engineered for Agricultural Excellence</h2>
+      <p class="text-muted mx-auto" style="max-width: 650px;">
+        Designed to assist farmers, students, and agronomists in understanding how climate, rainfall, and pesticide management impact harvest outputs.
+      </p>
+    </div>
+
+    <div class="row g-4">
+      <!-- Feature 1 -->
+      <div class="col-md-6 col-lg-4">
+        <div class="glass-card h-100 d-flex flex-column">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="kpi-icon mb-0 bg-success bg-opacity-10 text-success"><i class="fa-solid fa-chart-line"></i></div>
+            <h4 class="mb-0 fs-5">Yield Estimation</h4>
+          </div>
+          <p class="text-muted small flex-grow-1">
+            Input country, target year, annual rainfall, temperature, and pesticide volume to predict harvest yields in hg/ha, kg/ha, and tonnes/ha using a validated Random Forest model.
+          </p>
+          <a href="{{ url_for('predict') }}" class="fw-bold text-success mt-2 d-inline-flex align-items-center gap-2">
+            Calculate Yield <i class="fa-solid fa-arrow-right"></i>
+          </a>
+        </div>
+      </div>
+
+      <!-- Feature 2 -->
+      <div class="col-md-6 col-lg-4">
+        <div class="glass-card h-100 d-flex flex-column">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="kpi-icon mb-0 bg-warning bg-opacity-10 text-warning"><i class="fa-solid fa-clock-rotate-left"></i></div>
+            <h4 class="mb-0 fs-5">Future-Year Estimates</h4>
+          </div>
+          <p class="text-muted small flex-grow-1">
+            Explore climate and yield scenarios for upcoming seasons (2024–2035) with clear analytical context differentiating historical baselines from future trend estimations.
+          </p>
+          <a href="{{ url_for('predict') }}?year=2026" class="fw-bold text-warning mt-2 d-inline-flex align-items-center gap-2">
+            Simulate 2026 Scenario <i class="fa-solid fa-arrow-right"></i>
+          </a>
+        </div>
+      </div>
+
+      <!-- Feature 3 -->
+      <div class="col-md-6 col-lg-4">
+        <div class="glass-card h-100 d-flex flex-column">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="kpi-icon mb-0 bg-primary bg-opacity-10 text-primary"><i class="fa-solid fa-code-compare"></i></div>
+            <h4 class="mb-0 fs-5">Multi-Crop Comparison</h4>
+          </div>
+          <p class="text-muted small flex-grow-1">
+            Compare expected yields of rice, wheat, maize, potatoes, and other staples side-by-side under identical moisture and thermal conditions to determine optimal crop suitability.
+          </p>
+          <a href="{{ url_for('compare') }}" class="fw-bold text-primary mt-2 d-inline-flex align-items-center gap-2">
+            Compare Crops <i class="fa-solid fa-arrow-right"></i>
+          </a>
+        </div>
+      </div>
+
+      <!-- Feature 4 -->
+      <div class="col-md-6 col-lg-4">
+        <div class="glass-card h-100 d-flex flex-column">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="kpi-icon mb-0 bg-info bg-opacity-10 text-info"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            <h4 class="mb-0 fs-5">Smart Farming Assistant</h4>
+          </div>
+          <p class="text-muted small flex-grow-1">
+            Combines real ML yield calculations with Google Gemini Generative AI (and robust offline agronomic rules) to provide tailored irrigation, temperature mitigation, and Integrated Pest Management (IPM).
+          </p>
+          <a href="{{ url_for('assistant') }}" class="fw-bold text-info mt-2 d-inline-flex align-items-center gap-2">
+            Ask Farming Assistant <i class="fa-solid fa-arrow-right"></i>
+          </a>
+        </div>
+      </div>
+
+      <!-- Feature 5 -->
+      <div class="col-md-6 col-lg-4">
+        <div class="glass-card h-100 d-flex flex-column">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="kpi-icon mb-0 bg-secondary bg-opacity-10 text-secondary"><i class="fa-solid fa-book-open"></i></div>
+            <h4 class="mb-0 fs-5">Crop Explorer</h4>
+          </div>
+          <p class="text-muted small flex-grow-1">
+            Access deep historical statistics for each of the 10 crops in the FAO catalog, including historical average yields, yield stability, and top producing countries.
+          </p>
+          <a href="{{ url_for('crops') }}" class="fw-bold text-secondary mt-2 d-inline-flex align-items-center gap-2">
+            Browse Crops <i class="fa-solid fa-arrow-right"></i>
+          </a>
+        </div>
+      </div>
+
+      <!-- Feature 6 -->
+      <div class="col-md-6 col-lg-4">
+        <div class="glass-card h-100 d-flex flex-column">
+          <div class="d-flex align-items-center gap-3 mb-3">
+            <div class="kpi-icon mb-0 bg-danger bg-opacity-10 text-danger"><i class="fa-solid fa-chart-pie"></i></div>
+            <h4 class="mb-0 fs-5">Analytics &amp; History</h4>
+          </div>
+          <p class="text-muted small flex-grow-1">
+            Explore 8 dynamic interactive charts visualizing rainfall vs. yield, pesticide trends, and feature importances, while storing your personal prediction log securely.
+          </p>
+          <a href="{{ url_for('dashboard') }}" class="fw-bold text-danger mt-2 d-inline-flex align-items-center gap-2">
+            Open Analytics <i class="fa-solid fa-arrow-right"></i>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Process Workflow Section -->
+<section class="py-5 bg-white bg-opacity-50">
+  <div class="container">
+    <div class="text-center mb-5">
+      <span class="badge bg-success bg-opacity-10 text-success fw-bold px-3 py-2 rounded-pill uppercase">User Workflow</span>
+      <h2 class="mt-2">How AgriSense Generates Insights</h2>
+    </div>
+
+    <div class="row g-4 text-center">
+      <div class="col-md-3">
+        <div class="glass-card glass-card-sm h-100">
+          <div class="badge rounded-circle bg-success text-white p-3 mb-3 fs-5" style="width: 50px; height: 50px; display: inline-flex; align-items: center; justify-content: center;">1</div>
+          <h5 class="fs-6 fw-bold">Select Region &amp; Crop</h5>
+          <p class="text-muted small mb-0">Choose from 101 countries and 10 major staple crops verified in the dataset.</p>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="glass-card glass-card-sm h-100">
+          <div class="badge rounded-circle bg-success text-white p-3 mb-3 fs-5" style="width: 50px; height: 50px; display: inline-flex; align-items: center; justify-content: center;">2</div>
+          <h5 class="fs-6 fw-bold">Define Conditions</h5>
+          <p class="text-muted small mb-0">Specify production year, annual rainfall (mm), temperature (°C), and pesticide usage.</p>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="glass-card glass-card-sm h-100">
+          <div class="badge rounded-circle bg-success text-white p-3 mb-3 fs-5" style="width: 50px; height: 50px; display: inline-flex; align-items: center; justify-content: center;">3</div>
+          <h5 class="fs-6 fw-bold">Execute ML Pipeline</h5>
+          <p class="text-muted small mb-0">The Random Forest model evaluates nonlinear interactions and generates a mathematically precise yield estimate.</p>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="glass-card glass-card-sm h-100">
+          <div class="badge rounded-circle bg-success text-white p-3 mb-3 fs-5" style="width: 50px; height: 50px; display: inline-flex; align-items: center; justify-content: center;">4</div>
+          <h5 class="fs-6 fw-bold">Smart Agronomy Action</h5>
+          <p class="text-muted small mb-0">Receive contextual warnings, compare alternatives, and get AI-assisted farming advice.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="text-center mt-5">
+      <a href="{{ url_for('predict') }}" class="btn-agri btn-agri-primary px-5 py-3 fs-5">
+        <i class="fa-solid fa-play"></i> Launch Yield Predictor
+      </a>
+    </div>
+  </div>
+</section>
+{% endblock %}

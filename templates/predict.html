@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block title %}Predict Crop Yield — AgriSense{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      
+      <!-- Page Header -->
+      <div class="text-center mb-4">
+        <span class="badge-pill badge-trained mb-2">
+          <i class="fa-solid fa-microchip"></i> Machine Learning Estimator
+        </span>
+        <h2 class="mb-2">Crop Yield Prediction</h2>
+        <p class="text-muted">
+          Configure geographic location and environmental conditions to calculate estimated yield in <strong>hg/ha</strong>, <strong>kg/ha</strong>, and <strong>tonnes/ha</strong>.
+        </p>
+      </div>
+
+      <!-- Main Prediction Card -->
+      <div class="glass-card">
+        <form action="{{ url_for('prediction') }}" method="POST" id="predictForm">
+          
+          <!-- Location (Area / Country) -->
+          <div class="agri-input-group">
+            <div class="agri-label">
+              <span><i class="fa-solid fa-location-dot text-success me-2"></i>Country / Geographic Area</span>
+              <span class="unit-badge">101 FAO Regions</span>
+            </div>
+            <select name="area" id="areaSelect" class="form-select-agri" required>
+              {% for a in areas %}
+                <option value="{{ a }}" {% if prefill.area == a %}selected{% endif %}>{{ a }}</option>
+              {% endfor %}
+            </select>
+            <small class="text-muted" style="font-size: 0.8rem;">Populated directly from verified historical agricultural records.</small>
+          </div>
+
+          <!-- Crop Variety Selector & Manual Entry Mode -->
+          <div class="agri-input-group">
+            <div class="agri-label">
+              <span><i class="fa-solid fa-wheat-awn text-success me-2"></i>Crop Variety</span>
+              <span class="unit-badge">40+ Varieties &bull; Manual Custom Entry</span>
+            </div>
+
+            <!-- Segmented Mode Switcher (Library Catalog vs Manual Entry) -->
+            <div class="crop-mode-tabs mb-3" role="tablist">
+              <button type="button" class="crop-mode-tab active" id="tabCatalogMode" data-mode="catalog">
+                <i class="fa-solid fa-list-check me-1"></i> Choose from Crop Library
+              </button>
+              <button type="button" class="crop-mode-tab" id="tabManualMode" data-mode="manual">
+                <i class="fa-solid fa-pen-to-square me-1"></i> Enter Crop Manually
+              </button>
+            </div>
+
+            <!-- MODE 1: Catalog Selector (Default) -->
+            <div id="catalogModeSection">
+              <!-- Searchable Dynamic Crop Selector -->
+              <div class="crop-search-wrapper">
+                <i class="fa-solid fa-magnifying-glass search-icon-pos"></i>
+                <input type="text" id="cropSearchInput" class="form-control-agri crop-search-input" 
+                       placeholder="Search 40+ crops (e.g. Maize, Cotton, Sugarcane, Tomato, Wheat)..." 
+                       value="{{ prefill.crop }}" autocomplete="off">
+                <div id="cropResultsDropdown" class="crop-results-dropdown"></div>
+              </div>
+
+              <!-- Category Filter Chips -->
+              <div class="crop-category-filter mt-2">
+                <span class="text-muted small me-1 align-self-center" style="font-size: 0.78rem;">Filter:</span>
+                <button type="button" class="cat-pill active" data-category="All">All Crops</button>
+                {% for cat in crop_categories %}
+                  <button type="button" class="cat-pill" data-category="{{ cat.name }}">
+                    <i class="fa-solid {{ cat.icon }} me-1"></i>{{ cat.badge }}
+                  </button>
+                {% endfor %}
+              </div>
+
+              <!-- Quick Selection Pills for Common & Category Crops -->
+              <div class="crop-quick-pills mt-2" id="cropQuickPills">
+                <span class="text-muted small align-self-center me-1" style="font-size: 0.78rem;">Popular:</span>
+                {% for c in all_selectable_crops %}
+                  <button type="button" 
+                          class="crop-pill {% if prefill.crop == c %}active{% endif %}" 
+                          data-crop="{{ c }}"
+                          {% if loop.index > 14 %}style="display: none;"{% endif %}>
+                    {{ c }}
+                  </button>
+                {% endfor %}
+              </div>
+            </div>
+
+            <!-- MODE 2: Manual Custom Crop Entry -->
+            <div id="manualModeSection" style="display: none;">
+              <div class="manual-crop-card p-3 rounded-3">
+                <label class="form-label small fw-bold text-dark mb-1">
+                  <i class="fa-solid fa-seedling text-success me-1"></i>Custom Crop Name:
+                </label>
+                <div class="input-group mb-2">
+                  <span class="input-group-text bg-white"><i class="fa-solid fa-pen text-muted"></i></span>
+                  <input type="text" id="manualCropInput" class="form-control-agri" 
+                         placeholder="Enter any crop (e.g. Dragon Fruit, Quinoa, Mustard, Sugarcane, Cotton)..."
+                         style="height: 48px;">
+                </div>
+
+                <div class="row g-2 mt-1">
+                  <div class="col-md-7">
+                    <label class="form-label text-muted small mb-1">Agronomic Crop Family (Optional Calibration):</label>
+                    <select id="manualCategorySelect" name="manual_category" class="form-select-agri" style="height: 44px; font-size: 0.88rem;">
+                      <option value="">Auto-Detect / General</option>
+                      <option value="Cereals & Grains">Cereals &amp; Grains (Wheat, Barley, Millets, Oats)</option>
+                      <option value="Pulses & Legumes">Pulses &amp; Legumes (Soybeans, Chickpeas, Lentils, Beans)</option>
+                      <option value="Cash & Commercial">Cash &amp; Commercial (Sugarcane, Cotton, Coffee, Tea)</option>
+                      <option value="Vegetables & Horticulture">Vegetables &amp; Horticulture (Tomato, Onion, Chili, Okra)</option>
+                      <option value="Fruits & Plantation">Fruits &amp; Plantation (Bananas, Mangoes, Apples, Papaya)</option>
+                      <option value="Oilseeds">Oilseeds (Mustard, Sunflower, Sesame, Canola)</option>
+                      <option value="Roots & Tubers">Roots &amp; Tubers (Potatoes, Sweet potatoes, Cassava, Yams)</option>
+                    </select>
+                  </div>
+                  <div class="col-md-5 d-flex align-items-end">
+                    <button type="button" class="btn btn-outline-success w-100 py-2 fw-semibold" id="applyManualCropBtn" style="height: 44px;">
+                      <i class="fa-solid fa-circle-check me-1"></i> Use Custom Crop
+                    </button>
+                  </div>
+                </div>
+
+                <small class="text-muted d-block mt-2" style="font-size: 0.78rem;">
+                  <i class="fa-solid fa-circle-info text-success me-1"></i>
+                  AgriSense automatically matches your custom crop to verified FAO climate responses and applies calibrated yield metrics.
+                </small>
+              </div>
+            </div>
+
+            <!-- Hidden Form Inputs for POST Submission -->
+            <input type="hidden" name="crop" id="selectedCropInput" value="{{ prefill.crop }}" required>
+            <input type="hidden" name="is_manual_mode" id="isManualModeInput" value="0">
+
+            <!-- Selected Crop Confirmation Badge -->
+            <div class="mt-2" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+              <span class="text-muted small">Active Selection:</span>
+              <span class="badge bg-success bg-opacity-15 text-success fw-bold px-2 py-1 rounded" id="selectedCropDisplay">
+                {{ prefill.crop }}
+              </span>
+              <span class="badge bg-light text-dark border px-2 py-1 rounded small" id="selectedCropTypeBadge">
+                Library Crop
+              </span>
+            </div>
+          </div>
+
+          <!-- Target Year & Future Prediction Notice -->
+          <div class="agri-input-group">
+            <div class="agri-label">
+              <span><i class="fa-solid fa-calendar text-success me-2"></i>Production Year</span>
+              <span class="unit-badge">Historical or Future</span>
+            </div>
+            <input type="number" name="year" id="yearInput" class="form-control-agri" 
+                   min="1970" max="2040" step="1" value="{{ prefill.year }}" required>
+            
+            <!-- Dynamic notice indicating whether historical training or future estimate -->
+            <div id="futureNoticeBadge" class="mt-2"></div>
+          </div>
+
+          <!-- Environmental Factors: Rainfall, Temperature, Pesticides -->
+          <div class="row g-3">
+            
+            <!-- Average Rainfall -->
+            <div class="col-md-4">
+              <div class="agri-input-group">
+                <div class="agri-label">
+                  <span><i class="fa-solid fa-cloud-rain text-primary me-1"></i>Rainfall</span>
+                  <span class="unit-badge">mm/year</span>
+                </div>
+                <input type="number" name="rainfall" class="form-control-agri" 
+                       min="0" max="6000" step="0.1" value="{{ prefill.rainfall }}" required>
+                <small class="text-muted d-block mt-1" style="font-size: 0.76rem;">Dataset avg: ~1,149 mm</small>
+              </div>
+            </div>
+
+            <!-- Average Temperature -->
+            <div class="col-md-4">
+              <div class="agri-input-group">
+                <div class="agri-label">
+                  <span><i class="fa-solid fa-temperature-half text-danger me-1"></i>Temperature</span>
+                  <span class="unit-badge">°C</span>
+                </div>
+                <input type="number" name="temperature" class="form-control-agri" 
+                       min="-10" max="55" step="0.1" value="{{ prefill.temperature }}" required>
+                <small class="text-muted d-block mt-1" style="font-size: 0.76rem;">Dataset avg: ~20.5 °C</small>
+              </div>
+            </div>
+
+            <!-- Pesticide Usage -->
+            <div class="col-md-4">
+              <div class="agri-input-group">
+                <div class="agri-label">
+                  <span><i class="fa-solid fa-flask-vial text-warning me-1"></i>Pesticides</span>
+                  <span class="unit-badge">tonnes</span>
+                </div>
+                <input type="number" name="pesticides" class="form-control-agri" 
+                       min="0" max="400000" step="1" value="{{ prefill.pesticides }}" required>
+                <small class="text-muted d-block mt-1" style="font-size: 0.76rem;">National annual scale</small>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Action Button -->
+          <div class="mt-4 text-center">
+            <button type="submit" class="btn-agri btn-agri-primary w-100 py-3 fs-5">
+              <i class="fa-solid fa-calculator me-2"></i> Calculate Crop Yield
+            </button>
+          </div>
+
+        </form>
+      </div>
+
+      <!-- Information Callout -->
+      <div class="mt-4 p-3 bg-white bg-opacity-75 border rounded-3 text-muted small">
+        <div class="d-flex gap-2">
+          <i class="fa-solid fa-circle-info text-success fs-5"></i>
+          <div>
+            <strong>Model Context &amp; Accuracy:</strong> AgriSense uses a Random Forest Regressor trained on 25,932 clean records from the FAO dataset (1990–2013), achieving an R² accuracy of <strong>0.9833</strong>. Future-year selections (e.g. 2025–2035) extrapolate learned patterns under the specified conditions.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

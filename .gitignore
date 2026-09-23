@@ -1,0 +1,39 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+model/*.pkl
+*.pkl
+
+# Environment secrets
+.env
+*.env.local
+
+# IDE and Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Antigravity artifacts
+.agents/
+
+# SQLite databases (local user data)
+users.db
+*.db
+*.sqlite3
+
+# Test and coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS files
+.DS_Store
+Thumbs.db

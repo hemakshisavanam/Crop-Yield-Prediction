@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Smart Farming Assistant — AgriSense{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+
+  <!-- Page Header -->
+  <div class="text-center mb-5">
+    <span class="badge-pill badge-future mb-2">
+      <i class="fa-solid fa-wand-magic-sparkles text-warning"></i> AI-Powered Agricultural Advisory
+    </span>
+    <h2 class="mb-2">Smart Farming Assistant</h2>
+    <p class="text-muted mx-auto" style="max-width: 720px;">
+      Calibrate your specific country and growing conditions to receive numerical yield estimations coupled with tailored agronomic guidance on irrigation, climate stress, and Integrated Pest Management (IPM).
+    </p>
+  </div>
+
+  <div class="row g-4">
+    
+    <!-- Left Column: Agronomy Calibrator & Quick Chat -->
+    <div class="col-lg-5">
+      
+      <!-- Agronomy Calibrator Form -->
+      <div class="glass-card mb-4">
+        <h5 class="fw-bold mb-3 d-flex align-items-center gap-2">
+          <i class="fa-solid fa-sliders text-success"></i> Agronomy Calibrator
+        </h5>
+        
+        <form action="{{ url_for('assistant') }}" method="POST">
+          <input type="hidden" name="action_type" value="agronomy_calibration">
+
+          <!-- Country Selection (Prompt Requirement) -->
+          <div class="agri-input-group">
+            <div class="agri-label">
+              <span><i class="fa-solid fa-earth-americas text-success me-1"></i>Country / Region</span>
+              <span class="unit-badge">101 Countries</span>
+            </div>
+            <select name="country" class="form-select-agri" required>
+              {% for a in areas %}
+                <option value="{{ a }}" {% if advice_result and advice_result.country == a %}selected{% elif a == 'India' and not advice_result %}selected{% endif %}>
+                  {{ a }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Crop Selection -->
+          <div class="agri-input-group">
+            <div class="agri-label">
+              <span><i class="fa-solid fa-wheat-awn text-success me-1"></i>Crop Variety</span>
+              <span class="unit-badge">10 Varieties</span>
+            </div>
+            <select name="crop" class="form-select-agri" required>
+              {% for c in crops %}
+                <option value="{{ c }}" {% if advice_result and advice_result.crop == c %}selected{% elif c == 'Maize' and not advice_result %}selected{% endif %}>
+                  {{ c }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Target Year -->
+          <div class="agri-input-group">
+            <label class="agri-label">Target Year</label>
+            <input type="number" name="year" class="form-control-agri" min="1970" max="2040" 
+                   value="{{ advice_result.year if advice_result else '2026' }}" required>
+          </div>
+
+          <!-- Rainfall & Temperature -->
+          <div class="row g-2">
+            <div class="col-6">
+              <div class="agri-input-group">
+                <div class="agri-label">
+                  <span>Rainfall</span>
+                  <span class="unit-badge">mm/yr</span>
+                </div>
+                <input type="number" name="rainfall" class="form-control-agri" min="0" max="6000" step="0.1" 
+                       value="{{ request.form.rainfall if request.form.rainfall else '1100' }}" required>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="agri-input-group">
+                <div class="agri-label">
+                  <span>Temperature</span>
+                  <span class="unit-badge">°C</span>
+                </div>
+                <input type="number" name="temperature" class="form-control-agri" min="-10" max="55" step="0.1" 
+                       value="{{ request.form.temperature if request.form.temperature else '24' }}" required>
+              </div>
+            </div>
+          </div>
+
+          <!-- Pesticide Volume -->
+          <div class="agri-input-group">
+            <div class="agri-label">
+              <span>Regional Pesticide Volume</span>
+              <span class="unit-badge">tonnes</span>
+            </div>
+            <input type="number" name="pesticides" class="form-control-agri" min="0" max="400000" step="1" 
+                   value="{{ request.form.pesticides if request.form.pesticides else '15000' }}" required>
+          </div>
+
+          <button type="submit" class="btn-agri btn-agri-primary w-100 py-3 mt-2">
+            <i class="fa-solid fa-wand-magic-sparkles me-2"></i> Generate Agronomic Advisory
+          </button>
+        </form>
+      </div>
+
+      <!-- General Agricultural Chat Q&A -->
+      <div class="glass-card">
+        <h5 class="fw-bold mb-3 d-flex align-items-center gap-2">
+          <i class="fa-solid fa-comments text-primary"></i> Ask Farming Questions
+        </h5>
+        <form action="{{ url_for('assistant') }}" method="POST">
+          <input type="hidden" name="action_type" value="chat_qa">
+          <div class="mb-3">
+            <textarea name="question" class="form-control" rows="3" 
+                      placeholder="Ask about fertilizer timing, drought management, or pest control..." required></textarea>
+          </div>
+          <button type="submit" class="btn btn-outline-success w-100 py-2">
+            <i class="fa-solid fa-paper-plane me-1"></i> Send Question
+          </button>
+        </form>
+
+        <!-- Quick Question Chips -->
+        <div class="mt-3">
+          <small class="text-muted fw-bold d-block mb-2">Frequently Asked:</small>
+          <div class="d-flex flex-wrap gap-1">
+            <button type="button" class="badge bg-light text-dark border p-2 text-decoration-none" 
+                    onclick="document.querySelector('textarea[name=question]').value='How can I reduce pesticide usage through Integrated Pest Management (IPM)?'">
+              IPM reduction
+            </button>
+            <button type="button" class="badge bg-light text-dark border p-2 text-decoration-none" 
+                    onclick="document.querySelector('textarea[name=question]').value='What is Alternate Wetting and Drying (AWD) in rice cultivation?'">
+              AWD in rice
+            </button>
+            <button type="button" class="badge bg-light text-dark border p-2 text-decoration-none" 
+                    onclick="document.querySelector('textarea[name=question]').value='How does temperature stress affect maize during pollination?'">
+              Maize heat stress
+            </button>
+          </div>
+        </div>
+
+        {% if chat_answer %}
+          <div class="mt-3 p-3 bg-light rounded-3 border">
+            <div class="fw-bold text-success small mb-1"><i class="fa-solid fa-robot me-1"></i> Assistant Response:</div>
+            <p class="mb-0 small text-dark" style="white-space: pre-line;">{{ chat_answer }}</p>
+          </div>
+        {% endif %}
+      </div>
+
+    </div>
+
+    <!-- Right Column: Advisory Results -->
+    <div class="col-lg-7">
+      {% if advice_result %}
+        
+        <!-- Result Header & Model Yield Preview -->
+        <div class="glass-card mb-4 border-success">
+          <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 pb-3 border-bottom mb-3">
+            <div>
+              <span class="badge bg-success bg-opacity-10 text-success fw-bold px-3 py-1 rounded-pill mb-1">
+                <i class="fa-solid fa-circle-check me-1"></i> {{ advice_result.source }}
+              </span>
+              <h4 class="mb-0 fw-bold text-dark">{{ advice_result.crop }} in {{ advice_result.country }} ({{ advice_result.year }})</h4>
+            </div>
+            
+            <div class="text-md-end bg-success bg-opacity-10 px-3 py-2 rounded-3 border border-success border-opacity-25">
+              <span class="text-muted small text-uppercase d-block" style="font-size: 0.75rem;">ML Predicted Yield</span>
+              <span class="fs-4 fw-bold text-success">{{ advice_result.predicted_kg_ha | format }} kg/ha</span>
+              <span class="text-muted small d-block" style="font-size: 0.75rem;">≈ {{ advice_result.predicted_tonnes_ha }} tonnes/ha</span>
+            </div>
+          </div>
+
+          <!-- Input Summary Pills -->
+          <div class="d-flex flex-wrap gap-2 mb-3 small">
+            <span class="badge bg-light text-dark border">
+              <i class="fa-solid fa-earth-americas text-muted me-1"></i> {{ advice_result.country }}
+            </span>
+            <span class="badge bg-light text-dark border">
+              <i class="fa-solid fa-wheat-awn text-muted me-1"></i> {{ advice_result.crop }}
+            </span>
+            <span class="badge bg-light text-dark border">
+              <i class="fa-solid fa-cloud-rain text-primary me-1"></i> {{ request.form.rainfall }} mm rain
+            </span>
+            <span class="badge bg-light text-dark border">
+              <i class="fa-solid fa-temperature-half text-danger me-1"></i> {{ request.form.temperature }} °C
+            </span>
+            <span class="badge bg-light text-dark border">
+              <i class="fa-solid fa-flask-vial text-warning me-1"></i> {{ request.form.pesticides }} tonnes pest.
+            </span>
+          </div>
+
+          <!-- Advice Content Display -->
+          <div class="advice-content-box p-3 bg-white border-0">
+            <div class="advice-text-rendered" style="font-size: 0.96rem; line-height: 1.7;">
+              {{ advice_result.advice_text | markdown | safe if advice_result.advice_text is string else advice_result.advice_text }}
+            </div>
+          </div>
+
+        </div>
+
+      {% else %}
+        <!-- Empty State -->
+        <div class="glass-card text-center py-5">
+          <div class="kpi-icon mx-auto mb-3" style="width: 65px; height: 65px; font-size: 2rem;">
+            <i class="fa-solid fa-wand-magic-sparkles text-warning"></i>
+          </div>
+          <h4 class="fw-bold">Ready for Agronomic Analysis</h4>
+          <p class="text-muted mx-auto mb-4" style="max-width: 480px;">
+            Select your country, crop variety, and enter your local rainfall, temperature, and pesticide metrics to generate a personalized agronomic advisory with yield estimates.
+          </p>
+          <div class="p-3 bg-light rounded-3 text-start small mx-auto" style="max-width: 520px;">
+            <h6 class="fw-bold mb-2 text-success"><i class="fa-solid fa-circle-info me-1"></i> What You Receive:</h6>
+            <ul class="mb-0 ps-3">
+              <li>Numerical crop yield prediction via trained Random Forest pipeline</li>
+              <li>Agro-climatic suitability and thermal stress evaluation</li>
+              <li>Water scheduling and drainage recommendations</li>
+              <li>Integrated Pest Management (IPM) guidelines for specific crop pests</li>
+              <li>Farmer-friendly actionable field advice</li>
+            </ul>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+</div>
+{% endblock %}
