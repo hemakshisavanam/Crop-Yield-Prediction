@@ -202,8 +202,8 @@ def train():
     crop_encoder_path = os.path.join(model_dir, "crop_encoder.pkl")
     metadata_path = os.path.join(model_dir, "metadata.json")
 
-    joblib.dump(model, crop_yield_model_path)
-    joblib.dump(model, crop_model_path)
+    joblib.dump(model, crop_yield_model_path, compress=3)
+    joblib.dump(model, crop_model_path, compress=3)
     joblib.dump(area_encoder, area_encoder_path)
     joblib.dump(crop_encoder, crop_encoder_path)
 
