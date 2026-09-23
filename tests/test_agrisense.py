@@ -307,6 +307,35 @@ class AgriSenseTestCase(unittest.TestCase):
         self.assertIn(b"RandomForestRegressor", about_res.data)
         self.assertIn(b"Food and Agriculture Organization", about_res.data)
 
+    def test_14_ensure_models_auto_recovery(self):
+        """Verify that ensure_models restores models and encoders if uninitialized."""
+        import app as app_module
+        # Simulate uninitialized state
+        orig_model = app_module.model
+        orig_area_encoder = app_module.area_encoder
+        orig_crop_encoder = app_module.crop_encoder
+
+        app_module.model = None
+        app_module.area_encoder = None
+        app_module.crop_encoder = None
+
+        self.assertTrue(app_module.ensure_models())
+        self.assertIsNotNone(app_module.model)
+        self.assertIsNotNone(app_module.area_encoder)
+        self.assertIsNotNone(app_module.crop_encoder)
+
+        # Confirm prediction works immediately after recovery
+        res = self.client.post("/api/predict", json={
+            "area": "India",
+            "crop": "Maize",
+            "year": 2026,
+            "rainfall": 1000.0,
+            "temperature": 24.0,
+            "pesticides": 15000.0
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.get_json()["success"])
+
 
 if __name__ == "__main__":
     unittest.main()

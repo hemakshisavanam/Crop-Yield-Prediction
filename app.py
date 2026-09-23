@@ -6,6 +6,7 @@ Flask Web Application Backend
 import os
 import sqlite3
 import datetime
+import logging
 import joblib
 import pandas as pd
 import numpy as np
@@ -21,6 +22,13 @@ from utils.crops_data import (
 )
 from utils.assistant import generate_farming_advice, get_response
 
+# Configure application logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("agrisense")
+
 # Load environment configuration
 load_dotenv()
 
@@ -31,18 +39,79 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE = os.path.join(BASE_DIR, "users.db")
 MODEL_DIR = os.path.join(BASE_DIR, "model")
 
-# Load trained ML model and label encoders
-model_path = os.path.join(MODEL_DIR, "crop_yield_model.pkl")
-if not os.path.exists(model_path):
-    model_path = os.path.join(MODEL_DIR, "crop_model.pkl")
+# ===============================
+# Model Loading & Auto-Recovery Pipeline
+# ===============================
+model = None
+area_encoder = None
+crop_encoder = None
+metadata = get_metadata()
 
-area_encoder_path = os.path.join(MODEL_DIR, "area_encoder.pkl")
-crop_encoder_path = os.path.join(MODEL_DIR, "crop_encoder.pkl")
+def get_model_paths():
+    model_path = os.path.join(MODEL_DIR, "crop_yield_model.pkl")
+    if not os.path.exists(model_path):
+        model_path = os.path.join(MODEL_DIR, "crop_model.pkl")
+    area_encoder_path = os.path.join(MODEL_DIR, "area_encoder.pkl")
+    crop_encoder_path = os.path.join(MODEL_DIR, "crop_encoder.pkl")
+    return model_path, area_encoder_path, crop_encoder_path
 
-model = joblib.load(model_path) if os.path.exists(model_path) else None
-area_encoder = joblib.load(area_encoder_path) if os.path.exists(area_encoder_path) else None
-crop_encoder = joblib.load(crop_encoder_path) if os.path.exists(crop_encoder_path) else None
+def load_or_train_models(force_train=False):
+    """
+    Safely loads ML model and encoders from disk.
+    If missing (e.g. on fresh cloud deployments), automatically triggers the
+    training pipeline and loads newly generated artifacts.
+    """
+    global model, area_encoder, crop_encoder, metadata
+    model_path, area_encoder_path, crop_encoder_path = get_model_paths()
 
+    missing_on_disk = (
+        force_train or
+        not os.path.exists(model_path) or
+        not os.path.exists(area_encoder_path) or
+        not os.path.exists(crop_encoder_path)
+    )
+
+    if missing_on_disk:
+        logger.warning("One or more ML model artifacts not found on disk. Initiating automated training pipeline...")
+        try:
+            from model.train_model import train
+            m, le_a, le_c, meta = train()
+            model = m
+            area_encoder = le_a
+            crop_encoder = le_c
+            metadata = meta
+            logger.info("Automated training pipeline completed successfully. Model loaded into memory.")
+            return model, area_encoder, crop_encoder
+        except Exception as e:
+            logger.error(f"Failed to auto-train model artifacts: {e}", exc_info=True)
+
+    try:
+        if os.path.exists(model_path) and model is None:
+            model = joblib.load(model_path)
+            logger.info(f"Loaded crop yield model from: {model_path}")
+        if os.path.exists(area_encoder_path) and area_encoder is None:
+            area_encoder = joblib.load(area_encoder_path)
+            logger.info(f"Loaded area encoder ({len(area_encoder.classes_)} regions)")
+        if os.path.exists(crop_encoder_path) and crop_encoder is None:
+            crop_encoder = joblib.load(crop_encoder_path)
+            logger.info(f"Loaded crop encoder ({len(crop_encoder.classes_)} crops)")
+    except Exception as e:
+        logger.error(f"Error loading model artifacts from disk: {e}", exc_info=True)
+
+    return model, area_encoder, crop_encoder
+
+def ensure_models():
+    """
+    Verifies that model and encoders are ready for inference.
+    Attempts auto-recovery if any are None.
+    """
+    global model, area_encoder, crop_encoder
+    if model is None or area_encoder is None or crop_encoder is None:
+        load_or_train_models()
+    return (model is not None and area_encoder is not None and crop_encoder is not None)
+
+# Initialize models at application startup
+load_or_train_models()
 metadata = get_metadata()
 
 # ===============================
@@ -322,6 +391,10 @@ def predict():
 
 @app.route("/prediction", methods=["POST"])
 def prediction():
+    if not ensure_models():
+        flash("The predictive machine learning model is currently initializing. Please try again in a moment.", "warning")
+        return redirect(url_for("predict"))
+
     area_name = request.form.get("area", "").strip()
     crop_name = request.form.get("crop", "").strip()
     manual_category = request.form.get("manual_category", "").strip()
@@ -353,128 +426,136 @@ def prediction():
         flash("Pesticide usage cannot be negative.", "danger")
         return redirect(url_for("predict"))
 
-    # Validate geographic area against trained encoders
-    if not area_name or area_name not in area_encoder.classes_:
-        flash(f"Country '{area_name}' is not in the training dataset. Please select an available country.", "warning")
+    try:
+        # Validate geographic area against trained encoders
+        if not area_name or area_name not in area_encoder.classes_:
+            flash(f"Country '{area_name}' is not in the training dataset. Please select an available country.", "warning")
+            return redirect(url_for("predict"))
+
+        # Resolve crop (Core 10 FAO, Extended Catalog, or Manual Input)
+        resolution = resolve_crop(crop_name, manual_category=manual_category)
+        resolved_crop_name = resolution["crop"]
+        archetype_crop = resolution["archetype"]
+        scaling_factor = resolution["scaling_factor"]
+        crop_category = resolution["category"]
+        is_manual = resolution["is_manual"] or is_manual_mode
+        is_extended = resolution["is_extended"]
+        is_core = resolution["is_core"]
+
+        if archetype_crop not in crop_encoder.classes_:
+            archetype_crop = "Maize"
+
+        # Encode categories
+        encoded_area = area_encoder.transform([area_name])[0]
+        encoded_crop = crop_encoder.transform([archetype_crop])[0]
+
+        input_df = pd.DataFrame([[
+            encoded_area,
+            encoded_crop,
+            year,
+            rainfall,
+            pesticides,
+            temperature
+        ]], columns=[
+            "Area",
+            "Item",
+            "Year",
+            "average_rain_fall_mm_per_year",
+            "pesticides_tonnes",
+            "avg_temp"
+        ])
+
+        # Model prediction on archetype
+        raw_predicted_hg_ha = max(0.0, float(model.predict(input_df)[0]))
+        # Apply calibrated scaling factor for extended / manual crop
+        predicted_yield_hg_ha = max(0.0, round(raw_predicted_hg_ha * scaling_factor, 1))
+
+        # Mathematically exact conversions
+        # 1 hg/ha = 0.1 kg/ha
+        yield_kg_ha = round(predicted_yield_hg_ha * 0.1, 2)
+        # 1 tonne = 1000 kg => tonnes/ha = kg/ha / 1000
+        yield_tonnes_ha = round(yield_kg_ha / 1000.0, 3)
+
+        # Determine Prediction Type
+        training_max_year = metadata.get("ranges", {}).get("year", {}).get("max", 2013)
+        training_min_year = metadata.get("ranges", {}).get("year", {}).get("min", 1990)
+        is_future = (year > training_max_year)
+
+        if is_manual:
+            prediction_type = "Manual Crop Estimate"
+        elif is_extended:
+            prediction_type = "Extended Agronomic Estimate"
+        elif is_future:
+            prediction_type = "Future-Year Model Estimate"
+        elif year < training_min_year:
+            prediction_type = "Historical Extrapolation"
+        else:
+            prediction_type = "Within Historical Range"
+
+        # Out-of-bounds checks against observed distributions
+        ranges = metadata.get("ranges", {})
+        warnings = []
+        if rainfall < ranges.get("rainfall_mm", {}).get("min", 50) or rainfall > ranges.get("rainfall_mm", {}).get("max", 3500):
+            warnings.append(f"Rainfall ({rainfall} mm) is outside the typical training range ({ranges.get('rainfall_mm', {}).get('min')}–{ranges.get('rainfall_mm', {}).get('max')} mm).")
+        if temperature < ranges.get("avg_temp_c", {}).get("min", 1.0) or temperature > ranges.get("avg_temp_c", {}).get("max", 31.0):
+            warnings.append(f"Temperature ({temperature}°C) is outside observed training bounds ({ranges.get('avg_temp_c', {}).get('min')}–{ranges.get('avg_temp_c', {}).get('max')}°C).")
+        if pesticides > ranges.get("pesticides_tonnes", {}).get("max", 370000):
+            warnings.append(f"Pesticides ({pesticides} tonnes) exceeds maximum recorded training usage.")
+
+        # Historical average comparison
+        hist_avg_kg_ha = resolution.get("mean_yield_kg_ha", yield_kg_ha)
+        hist_avg_hg_ha = round(hist_avg_kg_ha * 10.0, 1)
+
+        # Save to history if user is logged in
+        user = session.get("user")
+        if user:
+            try:
+                conn = get_db_connection()
+                cur = conn.cursor()
+                cur.execute("""
+                    INSERT INTO predictions(
+                        username, area, crop, year, rainfall, pesticides, temperature,
+                        prediction, yield_kg_ha, yield_tonnes_ha, prediction_type
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    user, area_name, resolved_crop_name, year, rainfall, pesticides, temperature,
+                    predicted_yield_hg_ha, yield_kg_ha, yield_tonnes_ha, prediction_type
+                ))
+                conn.commit()
+                conn.close()
+            except Exception as dbe:
+                logger.error(f"Failed to record prediction in history: {dbe}", exc_info=True)
+
+        return render_template(
+            "result.html",
+            crop=resolved_crop_name,
+            area=area_name,
+            year=year,
+            rainfall=rainfall,
+            temperature=temperature,
+            pesticides=pesticides,
+            predicted_hg_ha=predicted_yield_hg_ha,
+            yield_kg_ha=yield_kg_ha,
+            yield_tonnes_ha=yield_tonnes_ha,
+            prediction_type=prediction_type,
+            is_future=is_future,
+            is_manual=is_manual,
+            is_extended=is_extended,
+            is_core=is_core,
+            archetype_crop=archetype_crop,
+            scaling_factor=scaling_factor,
+            crop_category=crop_category,
+            source_label=resolution.get("source_label", "Agronomic Estimate"),
+            training_min_year=training_min_year,
+            training_max_year=training_max_year,
+            warnings=warnings,
+            crop_stats=resolution,
+            hist_avg_kg_ha=hist_avg_kg_ha
+        )
+    except Exception as e:
+        logger.exception("Prediction failed unexpectedly: %s", e)
+        flash(f"An error occurred while calculating the yield prediction ({e}). Please try again.", "danger")
         return redirect(url_for("predict"))
-
-    # Resolve crop (Core 10 FAO, Extended Catalog, or Manual Input)
-    resolution = resolve_crop(crop_name, manual_category=manual_category)
-    resolved_crop_name = resolution["crop"]
-    archetype_crop = resolution["archetype"]
-    scaling_factor = resolution["scaling_factor"]
-    crop_category = resolution["category"]
-    is_manual = resolution["is_manual"] or is_manual_mode
-    is_extended = resolution["is_extended"]
-    is_core = resolution["is_core"]
-
-    if archetype_crop not in crop_encoder.classes_:
-        archetype_crop = "Maize"
-
-    # Encode categories
-    encoded_area = area_encoder.transform([area_name])[0]
-    encoded_crop = crop_encoder.transform([archetype_crop])[0]
-
-    input_df = pd.DataFrame([[
-        encoded_area,
-        encoded_crop,
-        year,
-        rainfall,
-        pesticides,
-        temperature
-    ]], columns=[
-        "Area",
-        "Item",
-        "Year",
-        "average_rain_fall_mm_per_year",
-        "pesticides_tonnes",
-        "avg_temp"
-    ])
-
-    # Model prediction on archetype
-    raw_predicted_hg_ha = max(0.0, float(model.predict(input_df)[0]))
-    # Apply calibrated scaling factor for extended / manual crop
-    predicted_yield_hg_ha = max(0.0, round(raw_predicted_hg_ha * scaling_factor, 1))
-
-    # Mathematically exact conversions
-    # 1 hg/ha = 0.1 kg/ha
-    yield_kg_ha = round(predicted_yield_hg_ha * 0.1, 2)
-    # 1 tonne = 1000 kg => tonnes/ha = kg/ha / 1000
-    yield_tonnes_ha = round(yield_kg_ha / 1000.0, 3)
-
-    # Determine Prediction Type
-    training_max_year = metadata.get("ranges", {}).get("year", {}).get("max", 2013)
-    training_min_year = metadata.get("ranges", {}).get("year", {}).get("min", 1990)
-    is_future = (year > training_max_year)
-
-    if is_manual:
-        prediction_type = "Manual Crop Estimate"
-    elif is_extended:
-        prediction_type = "Extended Agronomic Estimate"
-    elif is_future:
-        prediction_type = "Future-Year Model Estimate"
-    elif year < training_min_year:
-        prediction_type = "Historical Extrapolation"
-    else:
-        prediction_type = "Within Historical Range"
-
-    # Out-of-bounds checks against observed distributions
-    ranges = metadata.get("ranges", {})
-    warnings = []
-    if rainfall < ranges.get("rainfall_mm", {}).get("min", 50) or rainfall > ranges.get("rainfall_mm", {}).get("max", 3500):
-        warnings.append(f"Rainfall ({rainfall} mm) is outside the typical training range ({ranges.get('rainfall_mm', {}).get('min')}–{ranges.get('rainfall_mm', {}).get('max')} mm).")
-    if temperature < ranges.get("avg_temp_c", {}).get("min", 1.0) or temperature > ranges.get("avg_temp_c", {}).get("max", 31.0):
-        warnings.append(f"Temperature ({temperature}°C) is outside observed training bounds ({ranges.get('avg_temp_c', {}).get('min')}–{ranges.get('avg_temp_c', {}).get('max')}°C).")
-    if pesticides > ranges.get("pesticides_tonnes", {}).get("max", 370000):
-        warnings.append(f"Pesticides ({pesticides} tonnes) exceeds maximum recorded training usage.")
-
-    # Historical average comparison
-    hist_avg_kg_ha = resolution.get("mean_yield_kg_ha", yield_kg_ha)
-    hist_avg_hg_ha = round(hist_avg_kg_ha * 10.0, 1)
-
-    # Save to history if user is logged in
-    user = session.get("user")
-    if user:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO predictions(
-                username, area, crop, year, rainfall, pesticides, temperature,
-                prediction, yield_kg_ha, yield_tonnes_ha, prediction_type
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            user, area_name, resolved_crop_name, year, rainfall, pesticides, temperature,
-            predicted_yield_hg_ha, yield_kg_ha, yield_tonnes_ha, prediction_type
-        ))
-        conn.commit()
-        conn.close()
-
-    return render_template(
-        "result.html",
-        crop=resolved_crop_name,
-        area=area_name,
-        year=year,
-        rainfall=rainfall,
-        temperature=temperature,
-        pesticides=pesticides,
-        predicted_hg_ha=predicted_yield_hg_ha,
-        yield_kg_ha=yield_kg_ha,
-        yield_tonnes_ha=yield_tonnes_ha,
-        prediction_type=prediction_type,
-        is_future=is_future,
-        is_manual=is_manual,
-        is_extended=is_extended,
-        is_core=is_core,
-        archetype_crop=archetype_crop,
-        scaling_factor=scaling_factor,
-        crop_category=crop_category,
-        source_label=resolution.get("source_label", "Agronomic Estimate"),
-        training_min_year=training_min_year,
-        training_max_year=training_max_year,
-        warnings=warnings,
-        crop_stats=resolution,
-        hist_avg_kg_ha=hist_avg_kg_ha
-    )
 
 # ===============================
 # Crop Explorer Routes
@@ -523,40 +604,49 @@ def compare():
             # Default to top 3 crops if none checked
             selected_crops = ["Maize", "Rice, paddy", "Wheat"]
 
+        if not ensure_models():
+            flash("The comparison model is currently initializing. Please try again in a few moments.", "warning")
+            return redirect(url_for("compare"))
+
         comparison_results = []
-        if area in area_encoder.classes_:
-            encoded_area = area_encoder.transform([area])[0]
+        try:
+            if area_encoder and area in area_encoder.classes_:
+                encoded_area = area_encoder.transform([area])[0]
 
-            for c in selected_crops:
-                res = resolve_crop(c)
-                arch = res["archetype"]
-                factor = res["scaling_factor"]
-                if arch in crop_encoder.classes_:
-                    encoded_crop = crop_encoder.transform([arch])[0]
-                    input_df = pd.DataFrame([[
-                        encoded_area, encoded_crop, year, rainfall, pesticides, temperature
-                    ]], columns=[
-                        "Area", "Item", "Year", "average_rain_fall_mm_per_year",
-                        "pesticides_tonnes", "avg_temp"
-                    ])
-                    pred_hg_ha = max(0.0, float(model.predict(input_df)[0])) * factor
-                    pred_kg_ha = round(pred_hg_ha * 0.1, 1)
-                    pred_tonnes_ha = round(pred_kg_ha / 1000.0, 3)
+                for c in selected_crops:
+                    res = resolve_crop(c)
+                    arch = res["archetype"]
+                    factor = res["scaling_factor"]
+                    if crop_encoder and arch in crop_encoder.classes_:
+                        encoded_crop = crop_encoder.transform([arch])[0]
+                        input_df = pd.DataFrame([[
+                            encoded_area, encoded_crop, year, rainfall, pesticides, temperature
+                        ]], columns=[
+                            "Area", "Item", "Year", "average_rain_fall_mm_per_year",
+                            "pesticides_tonnes", "avg_temp"
+                        ])
+                        pred_hg_ha = max(0.0, float(model.predict(input_df)[0])) * factor
+                        pred_kg_ha = round(pred_hg_ha * 0.1, 1)
+                        pred_tonnes_ha = round(pred_kg_ha / 1000.0, 3)
 
-                    hist_avg_kg = res.get("mean_yield_kg_ha", 0.0)
+                        hist_avg_kg = res.get("mean_yield_kg_ha", 0.0)
 
-                    comparison_results.append({
-                        "crop": res["crop"],
-                        "category": res["category"],
-                        "yield_hg_ha": round(pred_hg_ha, 1),
-                        "yield_kg_ha": pred_kg_ha,
-                        "yield_tonnes_ha": pred_tonnes_ha,
-                        "historical_avg_kg_ha": hist_avg_kg,
-                        "diff_vs_historical": round(pred_kg_ha - hist_avg_kg, 1) if hist_avg_kg else 0.0
-                    })
+                        comparison_results.append({
+                            "crop": res["crop"],
+                            "category": res["category"],
+                            "yield_hg_ha": round(pred_hg_ha, 1),
+                            "yield_kg_ha": pred_kg_ha,
+                            "yield_tonnes_ha": pred_tonnes_ha,
+                            "historical_avg_kg_ha": hist_avg_kg,
+                            "diff_vs_historical": round(pred_kg_ha - hist_avg_kg, 1) if hist_avg_kg else 0.0
+                        })
 
-        # Sort by predicted yield descending
-        comparison_results.sort(key=lambda x: x["yield_kg_ha"], reverse=True)
+            # Sort by predicted yield descending
+            comparison_results.sort(key=lambda x: x["yield_kg_ha"], reverse=True)
+        except Exception as e:
+            logger.exception("Error calculating crop comparisons: %s", e)
+            flash("An error occurred while calculating crop comparisons. Please try again.", "danger")
+            return redirect(url_for("compare"))
 
         return render_template(
             "compare.html",
@@ -619,7 +709,8 @@ def assistant():
             res = resolve_crop(crop)
             arch = res["archetype"]
             factor = res["scaling_factor"]
-            if country in area_encoder.classes_ and arch in crop_encoder.classes_:
+            ensure_models()
+            if area_encoder and country in area_encoder.classes_ and crop_encoder and arch in crop_encoder.classes_ and model:
                 enc_a = area_encoder.transform([country])[0]
                 enc_c = crop_encoder.transform([arch])[0]
                 inp = pd.DataFrame([[enc_a, enc_c, year, rainfall, pesticides, temperature]], columns=[
@@ -813,6 +904,9 @@ def api_chart_data():
 
 @app.route("/api/predict", methods=["POST"])
 def api_predict():
+    if not ensure_models():
+        return jsonify({"success": False, "error": "Prediction model is currently initializing. Please retry in a few moments."}), 503
+
     data = request.get_json() or {}
     area = data.get("area")
     crop = data.get("crop")
@@ -825,57 +919,61 @@ def api_predict():
     except (TypeError, ValueError):
         return jsonify({"success": False, "error": "Invalid numerical parameters"}), 400
 
-    if not area or area not in area_encoder.classes_:
-        return jsonify({"success": False, "error": "Invalid area or country"}), 400
+    try:
+        if not area or not area_encoder or area not in area_encoder.classes_:
+            return jsonify({"success": False, "error": "Invalid area or country"}), 400
 
-    if not crop:
-        return jsonify({"success": False, "error": "Missing crop variety parameter"}), 400
+        if not crop:
+            return jsonify({"success": False, "error": "Missing crop variety parameter"}), 400
 
-    resolution = resolve_crop(crop, manual_category=manual_category)
-    archetype = resolution["archetype"]
-    factor = resolution["scaling_factor"]
+        resolution = resolve_crop(crop, manual_category=manual_category)
+        archetype = resolution["archetype"]
+        factor = resolution["scaling_factor"]
 
-    if archetype not in crop_encoder.classes_:
-        archetype = "Maize"
+        if not crop_encoder or archetype not in crop_encoder.classes_:
+            archetype = "Maize"
 
-    enc_a = area_encoder.transform([area])[0]
-    enc_c = crop_encoder.transform([archetype])[0]
+        enc_a = area_encoder.transform([area])[0]
+        enc_c = crop_encoder.transform([archetype])[0]
 
-    inp = pd.DataFrame([[enc_a, enc_c, year, rainfall, pesticides, temperature]], columns=[
-        "Area", "Item", "Year", "average_rain_fall_mm_per_year", "pesticides_tonnes", "avg_temp"
-    ])
-    raw_yield_hg = max(0.0, float(model.predict(inp)[0]))
-    yield_hg_ha = round(raw_yield_hg * factor, 2)
-    yield_kg_ha = round(yield_hg_ha * 0.1, 2)
-    yield_tonnes_ha = round(yield_kg_ha / 1000.0, 3)
+        inp = pd.DataFrame([[enc_a, enc_c, year, rainfall, pesticides, temperature]], columns=[
+            "Area", "Item", "Year", "average_rain_fall_mm_per_year", "pesticides_tonnes", "avg_temp"
+        ])
+        raw_yield_hg = max(0.0, float(model.predict(inp)[0]))
+        yield_hg_ha = round(raw_yield_hg * factor, 2)
+        yield_kg_ha = round(yield_hg_ha * 0.1, 2)
+        yield_tonnes_ha = round(yield_kg_ha / 1000.0, 3)
 
-    if resolution["is_manual"]:
-        pred_type = "Manual Crop Estimate"
-    elif resolution["is_extended"]:
-        pred_type = "Extended Agronomic Estimate"
-    elif year > 2013:
-        pred_type = "Future-Year Model Estimate"
-    else:
-        pred_type = "Historical Benchmark"
+        if resolution["is_manual"]:
+            pred_type = "Manual Crop Estimate"
+        elif resolution["is_extended"]:
+            pred_type = "Extended Agronomic Estimate"
+        elif year > 2013:
+            pred_type = "Future-Year Model Estimate"
+        else:
+            pred_type = "Historical Benchmark"
 
-    return jsonify({
-        "success": True,
-        "data": {
-            "area": area,
-            "crop": resolution["crop"],
-            "category": resolution["category"],
-            "archetype": archetype,
-            "year": year,
-            "yield_hg_ha": yield_hg_ha,
-            "yield_kg_ha": yield_kg_ha,
-            "yield_tonnes_ha": yield_tonnes_ha,
-            "prediction_type": pred_type,
-            "is_manual": resolution["is_manual"],
-            "is_extended": resolution["is_extended"],
-            "is_core": resolution["is_core"],
-            "source_label": resolution["source_label"]
-        }
-    })
+        return jsonify({
+            "success": True,
+            "data": {
+                "area": area,
+                "crop": resolution["crop"],
+                "category": resolution["category"],
+                "archetype": archetype,
+                "year": year,
+                "yield_hg_ha": yield_hg_ha,
+                "yield_kg_ha": yield_kg_ha,
+                "yield_tonnes_ha": yield_tonnes_ha,
+                "prediction_type": pred_type,
+                "is_manual": resolution["is_manual"],
+                "is_extended": resolution["is_extended"],
+                "is_core": resolution["is_core"],
+                "source_label": resolution["source_label"]
+            }
+        })
+    except Exception as e:
+        logger.exception("api_predict failed: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route("/api/assistant", methods=["POST"])
 def api_assistant():
@@ -888,7 +986,8 @@ def api_assistant():
     pesticides = float(data.get("pesticides", 15000))
 
     predicted_hg_ha = 0.0
-    if country in area_encoder.classes_ and crop in crop_encoder.classes_:
+    ensure_models()
+    if area_encoder and country in area_encoder.classes_ and crop_encoder and crop in crop_encoder.classes_ and model:
         enc_a = area_encoder.transform([country])[0]
         enc_c = crop_encoder.transform([crop])[0]
         inp = pd.DataFrame([[enc_a, enc_c, year, rainfall, pesticides, temperature]], columns=[

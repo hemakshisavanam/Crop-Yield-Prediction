@@ -98,11 +98,15 @@ def train():
     print(f"Training rows: {len(X_train)}, Testing rows: {len(X_test)}")
 
     # Train Random Forest Regressor
+    # Optimized for cloud deployment (Render Free Tier 512MB RAM):
+    # n_estimators=80, max_depth=22, min_samples_leaf=2 maintains R² ~0.982 while reducing model size from 125MB to ~13.9MB
     print("Training RandomForestRegressor model...")
     model = RandomForestRegressor(
-        n_estimators=100,
+        n_estimators=80,
+        max_depth=22,
+        min_samples_leaf=2,
         random_state=42,
-        n_jobs=-1
+        n_jobs=2
     )
     model.fit(X_train, y_train)
 
@@ -170,7 +174,9 @@ def train():
 
     metadata = {
         "model_name": "RandomForestRegressor",
-        "n_estimators": 100,
+        "n_estimators": 80,
+        "max_depth": 22,
+        "min_samples_leaf": 2,
         "dataset_name": "yield_df.csv",
         "dataset_source": "Food and Agriculture Organization (FAO) Agricultural Statistics",
         "raw_records": total_raw_records,
@@ -216,6 +222,8 @@ def train():
     print(f"  [OK] {area_encoder_path}")
     print(f"  [OK] {crop_encoder_path}")
     print(f"  [OK] {metadata_path}")
+
+    return model, area_encoder, crop_encoder, metadata
 
 if __name__ == "__main__":
     train()

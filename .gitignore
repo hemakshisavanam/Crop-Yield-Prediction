@@ -7,9 +7,8 @@ __pycache__/
 env/
 venv/
 ENV/
-
-model/*.pkl
-*.pkl
+# Trained ML model artifacts (tracked in git for reliable cloud deployment)
+# model/*.pkl is intentionally tracked so Render/cloud has models on clone
 
 # Environment secrets
 .env

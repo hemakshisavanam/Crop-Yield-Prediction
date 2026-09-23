@@ -1,6 +1,8 @@
 {
     "model_name": "RandomForestRegressor",
-    "n_estimators": 100,
+    "n_estimators": 80,
+    "max_depth": 22,
+    "min_samples_leaf": 2,
     "dataset_name": "yield_df.csv",
     "dataset_source": "Food and Agriculture Organization (FAO) Agricultural Statistics",
     "raw_records": 28242,
@@ -8,11 +10,11 @@
     "training_records": 20745,
     "test_records": 5187,
     "metrics": {
-        "r2_score": 0.9833,
-        "mae_hg_ha": 4221.72,
-        "mae_kg_ha": 422.17,
-        "rmse_hg_ha": 10999.9,
-        "rmse_kg_ha": 1099.99
+        "r2_score": 0.9816,
+        "mae_hg_ha": 4596.29,
+        "mae_kg_ha": 459.63,
+        "rmse_hg_ha": 11560.39,
+        "rmse_kg_ha": 1156.04
     },
     "features": [
         "Area",
@@ -31,12 +33,12 @@
         "Average Temperature (\u00b0C)"
     ],
     "feature_importances": {
-        "Area": 0.069,
-        "Item": 0.5981,
-        "Year": 0.031,
-        "average_rain_fall_mm_per_year": 0.0808,
-        "pesticides_tonnes": 0.1183,
-        "avg_temp": 0.1028
+        "Area": 0.0679,
+        "Item": 0.6009,
+        "Year": 0.0302,
+        "average_rain_fall_mm_per_year": 0.0799,
+        "pesticides_tonnes": 0.1175,
+        "avg_temp": 0.1037
     },
     "crops_count": 10,
     "areas_count": 101,
